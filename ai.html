@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Beach Volleyball (Balanced AI)</title>
+
+<style>
+body {
+    margin: 0;
+    background: #9fc7f5;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    color: #fff;
+}
+
+canvas {
+    background: linear-gradient(#87ceeb, #f4e2b6);
+    display: block;
+    margin: 0 auto;
+    border: 3px solid #fff;
+}
+</style>
+</head>
+
+<body>
+
+  <div style="padding:10px; background:#ffffff33; text-align:center;">
+    <a href="index.html" style="margin-right:20px; color:white; font-weight:bold; text-decoration:none;">
+        ⬅ Home
+    </a>
+
+    <a href="fromScratch.html" style="color:white; font-weight:bold; text-decoration:none;">
+        🏖 Beach Page
+    </a>
+</div>
+
+<h2>🏐 Balanced Beach Volleyball</h2>
+<p>← → move | Space jump | SPACE to serve</p>
+
+<canvas id="game" width="800" height="400"></canvas>
+
+<script>
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+
+const netX = 400;
+const gravity = 0.18;
+
+let keys = {};
+let paused = true;
+
+document.addEventListener("keydown", e => {
+    keys[e.code] = true;
+    if (e.code === "Space" && paused) startPoint();
+});
+
+document.addEventListener("keyup", e => keys[e.code] = false);
+
+// 🧍 PLAYER (slight advantage remains)
+let player = {
+    x: 120,
+    y: 260,
+    vy: 0,
+    w: 55,
+    h: 110,
+    score: 0
+};
+
+// 🤖 AI (now structured behavior + errors)
+let ai = {
+    x: 650,
+    y: 260,
+    vy: 0,
+    w: 55,
+    h: 110,
+    score: 0,
+
+    reaction: 0,
+    mistakeTimer: 0
+};
+
+let ball = {
+    x: 400,
+    y: 120,
+    vx: 0,
+    vy: 0,
+    r: 16,
+    lastHit: null
+};
+
+function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+}
+
+function resetBall(toRight) {
+    ball.x = 400;
+    ball.y = 120;
+
+    ball.vx = toRight ? 1.6 : -1.6;
+    ball.vy = -5.6;
+
+    ball.lastHit = null;
+}
+
+function startPoint() {
+    paused = false;
+    resetBall(Math.random() > 0.5);
+
+    // 🔥 AI "mistake cycle" resets every point
+    ai.mistakeTimer = Math.floor(Math.random() * 3) + 1; 
+    // every 1–3 points AI will misplay once
+}
+
+function hitBall(dir) {
+    ball.vx = dir * 2.0;
+    ball.vy = -7.5;
+}
+
+function hit(p) {
+    return (
+        ball.x > p.x &&
+        ball.x < p.x + p.w &&
+        ball.y > p.y &&
+        ball.y < p.y + p.h
+    );
+}
+
+function updatePlayer() {
+    if (paused) return;
+
+    let speed = 7.2;
+
+    if (keys["ArrowLeft"]) player.x -= speed;
+    if (keys["ArrowRight"]) player.x += speed;
+
+    player.x = clamp(player.x, 0, netX - player.w);
+
+    if (keys["Space"] && player.y >= 260) {
+        player.vy = -8.5;
+    }
+
+    player.vy += gravity;
+    player.y += player.vy;
+
+    if (player.y > 260) {
+        player.y = 260;
+        player.vy = 0;
+    }
+}
+
+function updateAI() {
+    if (paused) return;
+
+    ai.reaction--;
+
+    let perfectMode = ai.mistakeTimer <= 0;
+
+    if (ball.x > netX && ai.reaction <= 0) {
+
+        // 🎯 AI occasionally enters "mistake mode"
+        if (perfectMode && Math.random() < 0.35) {
+            // ❌ AI mispositions (big mistake)
+            ai.x += (Math.random() > 0.5 ? 20 : -20);
+        } else {
+            // ✅ normal tracking
+            if (ball.x > ai.x + 15) ai.x += 1.8;
+            if (ball.x < ai.x - 15) ai.x -= 1.8;
+        }
+
+        ai.x = clamp(ai.x, netX, c.width - ai.w);
+
+        // jumping also imperfect in mistake mode
+        if (ball.y < ai.y && ai.y >= 260) {
+            if (!perfectMode || Math.random() > 0.3) {
+                ai.vy = -6.2;
+            }
+        }
+
+        ai.reaction = 6;
+    }
+
+    ai.vy += gravity;
+    ai.y += ai.vy;
+
+    if (ai.y > 260) {
+        ai.y = 260;
+        ai.vy = 0;
+    }
+
+    // 🔥 slowly reduces mistake window over time
+    if (ai.mistakeTimer > 0 && Math.random() < 0.01) {
+        ai.mistakeTimer--;
+    }
+}
+
+function updateBall() {
+    if (paused) return;
+
+    ball.vx = clamp(ball.vx, -2.3, 2.3);
+    ball.vy = clamp(ball.vy, -8, 8);
+
+    ball.vy += gravity;
+
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    if (ball.x < 0 || ball.x > c.width) {
+        ball.vx *= -0.75;
+    }
+
+    if (ball.x > netX - 6 && ball.x < netX + 6 && ball.y > 240) {
+        ball.vx *= -0.45;
+        ball.x += ball.vx;
+    }
+
+    if (hit(player) && ball.lastHit !== "p") {
+        hitBall(1);
+        ball.lastHit = "p";
+    }
+
+    // 🤖 AI sometimes misses hits
+    if (hit(ai) && ball.lastHit !== "ai") {
+        if (Math.random() > 0.25) {
+            hitBall(-1);
+        }
+        ball.lastHit = "ai";
+    }
+
+    if (ball.y > 390) {
+        if (ball.x < netX) ai.score++;
+        else player.score++;
+
+        if (player.score >= 10 || ai.score >= 10) {
+            alert((player.score >= 10 ? "You win!" : "Computer wins!") + " Refresh to restart.");
+            player.score = 0;
+            ai.score = 0;
+        }
+
+        paused = true;
+    }
+}
+
+function draw() {
+    ctx.clearRect(0,0,c.width,c.height);
+
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(netX, 230, 5, 170);
+
+    ctx.fillStyle = "#e6c08f";
+    ctx.fillRect(0, 350, 800, 50);
+
+    ctx.fillStyle = "#ff4d4d";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+
+    ctx.fillStyle = "#4dff88";
+    ctx.fillRect(ai.x, ai.y, ai.w, ai.h);
+
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+
+    ctx.fillStyle = "#000";
+    ctx.font = "20px Arial";
+    ctx.fillText(player.score, 200, 40);
+    ctx.fillText(ai.score, 600, 40);
+
+    if (paused) {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(0,0,800,400);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "28px Arial";
+        ctx.fillText("Press SPACE to serve", 240, 200);
+    }
+}
+
+function loop() {
+    updatePlayer();
+    updateAI();
+    updateBall();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
